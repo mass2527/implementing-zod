@@ -130,3 +130,36 @@ test("ZodNumber", () => {
   expect(safe.parse(Number.MIN_SAFE_INTEGER)).toBe(Number.MIN_SAFE_INTEGER);
   expect(() => safe.parse(Number.MIN_SAFE_INTEGER - 1)).toThrow();
 });
+
+test("ZodEnum", () => {
+  const fishEnum = z.enum(["Salmon", "Tuna", "Trout"]);
+
+  // safeParse
+  expect(fishEnum.safeParse("Solomon").success).toBe(false);
+  expect(fishEnum.safeParse("Salmon").success).toBe(true);
+
+  // parse
+  expect(fishEnum.parse("Salmon"));
+  expect(() => fishEnum.parse("Solomon")).toThrow();
+
+  // output type
+  expectTypeOf(fishEnum["_output"]).toMatchTypeOf<
+    "Salmon" | "Tuna" | "Trout"
+  >();
+
+  // readonly type
+  const readonly = ["Salmon", "Tuna", "Trout"] as const;
+  z.enum(readonly);
+
+  // enum
+  expectTypeOf(fishEnum.enum).toMatchTypeOf<{
+    Salmon: "Salmon";
+    Tuna: "Tuna";
+    Trout: "Trout";
+  }>();
+  expect(fishEnum.enum).toEqual({
+    Salmon: "Salmon",
+    Tuna: "Tuna",
+    Trout: "Trout",
+  });
+});

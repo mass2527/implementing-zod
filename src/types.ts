@@ -431,7 +431,62 @@ class ZodNumber extends ZodType<number, ZodNumberDef> {
   }
 }
 
+type ZodEnumDef<T extends [string, ...string[]]> = {
+  values: T;
+};
+
+class ZodEnum<T extends [string, ...string[]]> extends ZodType<
+  T[number],
+  ZodEnumDef<T>
+> {
+  protected _parse(
+    data: unknown
+  ):
+    | { isValid: false; reason?: string | undefined }
+    | { isValid: true; data: any } {
+    if (typeof data !== "string") {
+      return {
+        isValid: false,
+        reason: `${data} should be string`,
+      };
+    }
+
+    if (this._def.values.includes(data)) {
+      return {
+        isValid: true,
+        data,
+      };
+    } else {
+      return {
+        isValid: false,
+        reason: `${data} is not a tuple member of ${this._def.values}`,
+      };
+    }
+  }
+
+  get enum(): {
+    [K in T[number]]: K;
+  } {
+    const entries = this._def.values.map((value) => [value, value]);
+    return Object.fromEntries(entries);
+  }
+
+  static create<U extends string, T extends Readonly<[U, ...U[]]>>(
+    values: T
+  ): ZodEnum<Writable<T>>;
+  static create<U extends string, T extends [U, ...U[]]>(values: T) {
+    return new ZodEnum({
+      values,
+    });
+  }
+}
+
+type Writable<T> = {
+  -readonly [K in keyof T]: T[K];
+};
+
 export const z = {
   string: ZodString.create,
   number: ZodNumber.create,
+  enum: ZodEnum.create,
 };
