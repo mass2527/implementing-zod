@@ -1,4 +1,5 @@
 import { assertNever } from "./asserts";
+import { floatSafeRemainder } from "./math";
 
 abstract class ZodType<Output, Def> {
   readonly _output!: Output;
@@ -213,6 +214,224 @@ class ZodString extends ZodType<string, ZodStringDef> {
   }
 }
 
+type ZodNumberCheck =
+  | {
+      kind: "min";
+      value: number;
+      isInclusive: boolean;
+      message?: string;
+    }
+  | {
+      kind: "max";
+      value: number;
+      isInclusive: boolean;
+      message?: string;
+    }
+  | {
+      kind: "int";
+      message?: string;
+    }
+  | {
+      kind: "multipleOf";
+      value: number;
+      message?: string;
+    }
+  | {
+      kind: "finite";
+      message?: string;
+    };
+
+type ZodNumberDef = {
+  checks: ZodNumberCheck[];
+};
+
+class ZodNumber extends ZodType<number, ZodNumberDef> {
+  protected _parse(
+    data: unknown
+  ):
+    | { isValid: false; reason?: string | undefined }
+    | { isValid: true; data: number } {
+    if (typeof data !== "number") {
+      return {
+        isValid: false,
+        reason: `${data} is not a number`,
+      };
+    }
+
+    for (const check of this._def.checks) {
+      if (check.kind === "min") {
+        if (check.isInclusive) {
+          if (data < check.value) {
+            return {
+              isValid: false,
+              reason:
+                check.message ??
+                `${data} should be greater than or equal to ${check.value}`,
+            };
+          }
+        } else {
+          if (data <= check.value) {
+            return {
+              isValid: false,
+              reason:
+                check.message ??
+                `${data} should be greater than ${check.value}`,
+            };
+          }
+        }
+      } else if (check.kind === "max") {
+        if (check.isInclusive) {
+          if (data > check.value) {
+            return {
+              isValid: false,
+              reason:
+                check.message ??
+                `${data} should be less than or equal to ${check.value}`,
+            };
+          }
+        } else {
+          if (data >= check.value) {
+            return {
+              isValid: false,
+              reason:
+                check.message ?? `${data} should be less than ${check.value}`,
+            };
+          }
+        }
+      } else if (check.kind === "int") {
+        if (!Number.isInteger(data)) {
+          return {
+            isValid: false,
+            reason: check.message ?? `${data} is not an integer`,
+          };
+        }
+      } else if (check.kind === "multipleOf") {
+        if (floatSafeRemainder(data, check.value)) {
+          return {
+            isValid: false,
+            reason:
+              check.message ?? `${data} should be multiple of ${check.value}`,
+          };
+        }
+      } else if (check.kind === "finite") {
+        if (!Number.isFinite(data)) {
+          return {
+            isValid: false,
+            reason: check.message ?? `${data} is not a finite number`,
+          };
+        }
+      } else {
+        assertNever(check);
+      }
+    }
+
+    return {
+      isValid: true,
+      data,
+    };
+  }
+
+  private _addCheck(check: ZodNumberCheck) {
+    this._def.checks.push(check);
+
+    return new ZodNumber({
+      checks: this._def.checks,
+    });
+  }
+
+  gt(value: number, message?: string) {
+    return this._addCheck({ kind: "min", value, isInclusive: false, message });
+  }
+
+  gte(value: number, message?: string) {
+    return this._addCheck({ kind: "min", value, isInclusive: true, message });
+  }
+
+  lt(value: number, message?: string) {
+    return this._addCheck({ kind: "max", value, isInclusive: false, message });
+  }
+
+  lte(value: number, message?: string) {
+    return this._addCheck({ kind: "max", value, isInclusive: true, message });
+  }
+
+  int(message?: string) {
+    return this._addCheck({ kind: "int", message });
+  }
+
+  positive(message?: string) {
+    return this._addCheck({
+      kind: "min",
+      value: 0,
+      isInclusive: false,
+      message,
+    });
+  }
+
+  nonnegative(message?: string) {
+    return this._addCheck({
+      kind: "min",
+      value: 0,
+      isInclusive: true,
+      message,
+    });
+  }
+
+  negative(message?: string) {
+    return this._addCheck({
+      kind: "max",
+      value: 0,
+      isInclusive: false,
+      message,
+    });
+  }
+
+  nonpositive(message?: string) {
+    return this._addCheck({
+      kind: "max",
+      value: 0,
+      isInclusive: true,
+      message,
+    });
+  }
+
+  multipleOf(value: number, message?: string) {
+    return this._addCheck({
+      kind: "multipleOf",
+      value,
+      message,
+    });
+  }
+
+  finite(message?: string) {
+    return this._addCheck({
+      kind: "finite",
+      message,
+    });
+  }
+
+  safe(message?: string) {
+    return this._addCheck({
+      kind: "min",
+      value: Number.MIN_SAFE_INTEGER,
+      isInclusive: true,
+      message,
+    })._addCheck({
+      kind: "max",
+      value: Number.MAX_SAFE_INTEGER,
+      isInclusive: true,
+      message,
+    });
+  }
+
+  static create() {
+    return new ZodNumber({
+      checks: [],
+    });
+  }
+}
+
 export const z = {
   string: ZodString.create,
+  number: ZodNumber.create,
 };
