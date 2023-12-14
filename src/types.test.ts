@@ -163,3 +163,22 @@ test("ZodEnum", () => {
     Trout: "Trout",
   });
 });
+
+test("ZodOptional", () => {
+  // optional
+  const optionalString1 = z.optional(z.string());
+  expect(optionalString1.parse(undefined)).toBeUndefined();
+  expect(optionalString1.parse("hello")).toBe("hello");
+  expectTypeOf(optionalString1["_output"]).toMatchTypeOf<string | undefined>();
+
+  const optionalString2 = z.string().optional();
+  expect(optionalString2.parse(undefined)).toBeUndefined();
+  expect(optionalString2.parse("hello")).toBe("hello");
+  expectTypeOf(optionalString2["_output"]).toMatchTypeOf<string | undefined>();
+
+  // unwrap
+  const string = optionalString2.unwrap();
+  expect(() => string.parse(undefined)).toThrow();
+  expect(string.parse("hello")).toBe("hello");
+  expectTypeOf(string["_output"]).toMatchTypeOf<string>();
+});

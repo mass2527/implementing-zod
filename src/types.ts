@@ -1,6 +1,7 @@
 import { assertNever } from "./asserts";
 import { floatSafeRemainder } from "./math";
 
+type ZodTypeAny = ZodType<any, any>;
 abstract class ZodType<Output, Def> {
   readonly _output!: Output;
   readonly _def: Def;
@@ -9,7 +10,7 @@ abstract class ZodType<Output, Def> {
     this._def = def;
   }
 
-  protected abstract _parse(data: unknown):
+  abstract _parse(data: unknown):
     | {
         isValid: true;
         data: Output;
@@ -43,6 +44,10 @@ abstract class ZodType<Output, Def> {
     } else {
       throw result.error;
     }
+  }
+
+  optional() {
+    return ZodOptional.create(this);
   }
 }
 
@@ -81,7 +86,7 @@ type ZodStringDef = {
 };
 
 class ZodString extends ZodType<string, ZodStringDef> {
-  protected _parse(
+  _parse(
     data: unknown
   ):
     | { isValid: false; reason?: string | undefined }
@@ -246,7 +251,7 @@ type ZodNumberDef = {
 };
 
 class ZodNumber extends ZodType<number, ZodNumberDef> {
-  protected _parse(
+  _parse(
     data: unknown
   ):
     | { isValid: false; reason?: string | undefined }
@@ -439,7 +444,7 @@ class ZodEnum<T extends [string, ...string[]]> extends ZodType<
   T[number],
   ZodEnumDef<T>
 > {
-  protected _parse(
+  _parse(
     data: unknown
   ):
     | { isValid: false; reason?: string | undefined }
@@ -481,6 +486,40 @@ class ZodEnum<T extends [string, ...string[]]> extends ZodType<
   }
 }
 
+type ZodOptionalDef<T extends ZodTypeAny> = {
+  innerType: T;
+};
+
+class ZodOptional<T extends ZodTypeAny> extends ZodType<
+  T["_output"] | undefined,
+  ZodOptionalDef<T>
+> {
+  _parse(
+    data: unknown
+  ):
+    | { isValid: false; reason?: string | undefined }
+    | { isValid: true; data: T["_output"] | undefined } {
+    if (typeof data === "undefined") {
+      return {
+        isValid: true,
+        data,
+      };
+    }
+
+    return this._def.innerType._parse(data);
+  }
+
+  unwrap() {
+    return this._def.innerType;
+  }
+
+  static create<T extends ZodTypeAny>(innerType: T) {
+    return new ZodOptional({
+      innerType,
+    });
+  }
+}
+
 type Writable<T> = {
   -readonly [K in keyof T]: T[K];
 };
@@ -489,4 +528,5 @@ export const z = {
   string: ZodString.create,
   number: ZodNumber.create,
   enum: ZodEnum.create,
+  optional: ZodOptional.create,
 };
