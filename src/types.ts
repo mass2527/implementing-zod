@@ -49,6 +49,10 @@ abstract class ZodType<Output, Def> {
   optional() {
     return ZodOptional.create(this);
   }
+
+  nullable() {
+    return ZodNullable.create(this);
+  }
 }
 
 type ZodStringCheck =
@@ -520,6 +524,40 @@ class ZodOptional<T extends ZodTypeAny> extends ZodType<
   }
 }
 
+type ZodNullableDef<T extends ZodTypeAny> = {
+  innerType: T;
+};
+
+class ZodNullable<T extends ZodTypeAny> extends ZodType<
+  T["_output"] | null,
+  ZodNullableDef<T>
+> {
+  _parse(
+    data: unknown
+  ):
+    | { isValid: false; reason?: string | undefined }
+    | { isValid: true; data: T["_output"] | null } {
+    if (data === null) {
+      return {
+        isValid: true,
+        data,
+      };
+    }
+
+    return this._def.innerType._parse(data);
+  }
+
+  unwrap() {
+    return this._def.innerType;
+  }
+
+  static create<T extends ZodTypeAny>(innerType: T) {
+    return new ZodNullable({
+      innerType,
+    });
+  }
+}
+
 type Writable<T> = {
   -readonly [K in keyof T]: T[K];
 };
@@ -529,4 +567,5 @@ export const z = {
   number: ZodNumber.create,
   enum: ZodEnum.create,
   optional: ZodOptional.create,
+  nullable: ZodNullable.create,
 };

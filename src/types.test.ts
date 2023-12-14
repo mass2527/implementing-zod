@@ -177,8 +177,29 @@ test("ZodOptional", () => {
   expectTypeOf(optionalString2["_output"]).toMatchTypeOf<string | undefined>();
 
   // unwrap
-  const string = optionalString2.unwrap();
+  const optionalString = z.string().optional();
+  const string = optionalString.unwrap();
   expect(() => string.parse(undefined)).toThrow();
+  expect(string.parse("hello")).toBe("hello");
+  expectTypeOf(string["_output"]).toMatchTypeOf<string>();
+});
+
+test("ZodNullable", () => {
+  // nullable
+  const nullableString1 = z.nullable(z.string());
+  expect(nullableString1.parse("hello")).toBe("hello");
+  expect(nullableString1.parse(null)).toBeNull();
+  expectTypeOf(nullableString1["_output"]).toMatchTypeOf<string | null>();
+
+  const nullableString2 = z.string().nullable();
+  expect(nullableString2.parse("hello")).toBe("hello");
+  expect(nullableString2.parse(null)).toBeNull();
+  expectTypeOf(nullableString2["_output"]).toMatchTypeOf<string | null>();
+
+  // // unwrap
+  const nullableString = z.string().nullable();
+  const string = nullableString.unwrap();
+  expect(() => string.parse(null)).toThrow();
   expect(string.parse("hello")).toBe("hello");
   expectTypeOf(string["_output"]).toMatchTypeOf<string>();
 });
