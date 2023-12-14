@@ -143,7 +143,7 @@ test("ZodEnum", () => {
   expect(() => fishEnum.parse("Solomon")).toThrow();
 
   // output type
-  expectTypeOf(fishEnum["_output"]).toMatchTypeOf<
+  expectTypeOf(fishEnum["_output"]).toEqualTypeOf<
     "Salmon" | "Tuna" | "Trout"
   >();
 
@@ -152,7 +152,7 @@ test("ZodEnum", () => {
   z.enum(readonly);
 
   // enum
-  expectTypeOf(fishEnum.enum).toMatchTypeOf<{
+  expectTypeOf(fishEnum.enum).toEqualTypeOf<{
     Salmon: "Salmon";
     Tuna: "Tuna";
     Trout: "Trout";
@@ -169,19 +169,19 @@ test("ZodOptional", () => {
   const optionalString1 = z.optional(z.string());
   expect(optionalString1.parse(undefined)).toBeUndefined();
   expect(optionalString1.parse("hello")).toBe("hello");
-  expectTypeOf(optionalString1["_output"]).toMatchTypeOf<string | undefined>();
+  expectTypeOf(optionalString1["_output"]).toEqualTypeOf<string | undefined>();
 
   const optionalString2 = z.string().optional();
   expect(optionalString2.parse(undefined)).toBeUndefined();
   expect(optionalString2.parse("hello")).toBe("hello");
-  expectTypeOf(optionalString2["_output"]).toMatchTypeOf<string | undefined>();
+  expectTypeOf(optionalString2["_output"]).toEqualTypeOf<string | undefined>();
 
   // unwrap
   const optionalString = z.string().optional();
   const string = optionalString.unwrap();
   expect(() => string.parse(undefined)).toThrow();
   expect(string.parse("hello")).toBe("hello");
-  expectTypeOf(string["_output"]).toMatchTypeOf<string>();
+  expectTypeOf(string["_output"]).toEqualTypeOf<string>();
 });
 
 test("ZodNullable", () => {
@@ -189,17 +189,110 @@ test("ZodNullable", () => {
   const nullableString1 = z.nullable(z.string());
   expect(nullableString1.parse("hello")).toBe("hello");
   expect(nullableString1.parse(null)).toBeNull();
-  expectTypeOf(nullableString1["_output"]).toMatchTypeOf<string | null>();
+  expectTypeOf(nullableString1["_output"]).toEqualTypeOf<string | null>();
 
   const nullableString2 = z.string().nullable();
   expect(nullableString2.parse("hello")).toBe("hello");
   expect(nullableString2.parse(null)).toBeNull();
-  expectTypeOf(nullableString2["_output"]).toMatchTypeOf<string | null>();
+  expectTypeOf(nullableString2["_output"]).toEqualTypeOf<string | null>();
 
   // // unwrap
   const nullableString = z.string().nullable();
   const string = nullableString.unwrap();
   expect(() => string.parse(null)).toThrow();
   expect(string.parse("hello")).toBe("hello");
-  expectTypeOf(string["_output"]).toMatchTypeOf<string>();
+  expectTypeOf(string["_output"]).toEqualTypeOf<string>();
+});
+
+test("ZodObject", () => {
+  // strip out(default)
+  const personSchema = z.object({
+    name: z.string(),
+    age: z.number(),
+    bloodType: z.enum(["A", "B", "AB", "O"]),
+  });
+  expect(
+    personSchema.parse({
+      name: "mike",
+      age: 20,
+      bloodType: "A",
+
+      someExtraKey: "this is extra key",
+    })
+  ).toEqual({
+    name: "mike",
+    age: 20,
+    bloodType: "A",
+  });
+
+  // passthrough
+  expect(
+    personSchema.passthrough().parse({
+      name: "mike",
+      age: 20,
+      bloodType: "A",
+
+      someExtraKey: "this is extra key",
+    })
+  ).toEqual({
+    name: "mike",
+    age: 20,
+    bloodType: "A",
+
+    someExtraKey: "this is extra key",
+  });
+
+  // strict
+  expect(() =>
+    personSchema.strict().parse({
+      name: "mike",
+      age: 20,
+      bloodType: "A",
+
+      someExtraKey: "this is extra key",
+    })
+  ).toThrow();
+
+  // strict then strip
+  expect(
+    personSchema.strict().strip().parse({
+      name: "mike",
+      age: 20,
+      bloodType: "A",
+
+      someExtraKey: "this is extra key",
+    })
+  ).toEqual({
+    name: "mike",
+    age: 20,
+    bloodType: "A",
+  });
+
+  // null
+  expect(() => personSchema.parse(null)).toThrow();
+
+  // array
+  expect(() => personSchema.parse([])).toThrow();
+
+  // promise
+  expect(() => personSchema.parse(new Promise(() => {}))).toThrow();
+
+  // regex
+  expect(() => personSchema.parse(/123/)).toThrow();
+
+  // date
+  expect(() => personSchema.parse(new Date())).toThrow();
+
+  // set
+  expect(() => personSchema.parse(new Set())).toThrow();
+
+  // map
+  expect(() => personSchema.parse(new Map())).toThrow();
+
+  // type
+  expectTypeOf(personSchema["_output"]).toEqualTypeOf<{
+    name: string;
+    age: number;
+    bloodType: "A" | "B" | "O" | "AB";
+  }>();
 });

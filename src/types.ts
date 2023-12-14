@@ -558,6 +558,152 @@ class ZodNullable<T extends ZodTypeAny> extends ZodType<
   }
 }
 
+type ZodObjectDef<T extends Record<string, ZodTypeAny>> = {
+  shape: T;
+  extraKeyStrategy: "strip" | "passthrough" | "strict";
+};
+
+class ZodObject<T extends Record<string, ZodTypeAny>> extends ZodType<
+  { [K in keyof T]: T[K]["_output"] },
+  ZodObjectDef<T>
+> {
+  _parse(
+    data: unknown
+  ):
+    | { isValid: false; reason?: string | undefined }
+    | { isValid: true; data: { [K in keyof T]: T[K]["_output"] } } {
+    if (typeof data === "object") {
+      if (data === null) {
+        return {
+          isValid: false,
+          reason: `${data} is null`,
+        };
+      }
+
+      if (Array.isArray(data)) {
+        return {
+          isValid: false,
+          reason: `${data} is an array`,
+        };
+      }
+
+      if (
+        "then" in data &&
+        typeof data.then === "function" &&
+        "catch" in data &&
+        typeof data.catch === "function"
+      ) {
+        return {
+          isValid: false,
+          reason: `${data} is promise`,
+        };
+      }
+
+      if (data instanceof RegExp) {
+        return {
+          isValid: false,
+          reason: `${data} is a regex`,
+        };
+      }
+
+      if (data instanceof Date) {
+        return {
+          isValid: false,
+          reason: `${data} is an date`,
+        };
+      }
+
+      if (data instanceof Set) {
+        return {
+          isValid: false,
+          reason: `${data} is an set`,
+        };
+      }
+
+      if (data instanceof Map) {
+        return {
+          isValid: false,
+          reason: `${data} is an map`,
+        };
+      }
+
+      const extraKeys = [];
+      const shapeKeys = Object.keys(this._def.shape);
+      for (const key in data) {
+        if (!shapeKeys.includes(key)) {
+          extraKeys.push(key);
+        }
+      }
+
+      if (extraKeys.length > 0 && this._def.extraKeyStrategy === "strict") {
+        return {
+          isValid: false,
+          reason: `extra key(s) found: ${extraKeys.join(", ")}`,
+        };
+      }
+
+      const reshapedData: any = {};
+      for (const key in data) {
+        if (this._def.extraKeyStrategy === "strip") {
+          if (!extraKeys.includes(key)) {
+            reshapedData[key] = data[key as keyof typeof data];
+          }
+        } else {
+          reshapedData[key] = data[key as keyof typeof data];
+        }
+      }
+
+      for (const key in reshapedData) {
+        const result = this._def.shape[key]?._parse(reshapedData[key]);
+        if (result && !result.isValid) {
+          return {
+            isValid: false,
+            reason: result.reason,
+          };
+        }
+      }
+
+      return {
+        isValid: true,
+        data: reshapedData,
+      };
+    } else {
+      return {
+        isValid: false,
+        reason: `${data} is not an object`,
+      };
+    }
+  }
+
+  passthrough() {
+    return new ZodObject({
+      shape: this._def.shape,
+      extraKeyStrategy: "passthrough",
+    });
+  }
+
+  strict() {
+    return new ZodObject({
+      shape: this._def.shape,
+      extraKeyStrategy: "strict",
+    });
+  }
+
+  strip() {
+    return new ZodObject({
+      shape: this._def.shape,
+      extraKeyStrategy: "strip",
+    });
+  }
+
+  static create<T extends Record<string, ZodTypeAny>>(shape: T) {
+    return new ZodObject({
+      shape,
+      extraKeyStrategy: "strip",
+    });
+  }
+}
+
 type Writable<T> = {
   -readonly [K in keyof T]: T[K];
 };
@@ -568,4 +714,5 @@ export const z = {
   enum: ZodEnum.create,
   optional: ZodOptional.create,
   nullable: ZodNullable.create,
+  object: ZodObject.create,
 };
