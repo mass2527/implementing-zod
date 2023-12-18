@@ -204,8 +204,7 @@ test("ZodNullable", () => {
   expectTypeOf(string["_output"]).toEqualTypeOf<string>();
 });
 
-test("ZodObject", () => {
-  // strip out(default)
+test("ZodObject - strip(default)", () => {
   const personSchema = z.object({
     name: z.string(),
     age: z.number(),
@@ -224,10 +223,24 @@ test("ZodObject", () => {
     age: 20,
     bloodType: "A",
   });
+  expect(() =>
+    personSchema.parse({
+      name: "mike",
+      age: 20,
+    })
+  ).toThrow();
+});
 
-  // passthrough
+test("ZodObject - passthrough", () => {
+  const personSchemaPassthrough = z
+    .object({
+      name: z.string(),
+      age: z.number(),
+      bloodType: z.enum(["A", "B", "AB", "O"]),
+    })
+    .passthrough();
   expect(
-    personSchema.passthrough().parse({
+    personSchemaPassthrough.passthrough().parse({
       name: "mike",
       age: 20,
       bloodType: "A",
@@ -242,9 +255,24 @@ test("ZodObject", () => {
     someExtraKey: "this is extra key",
   });
 
-  // strict
   expect(() =>
-    personSchema.strict().parse({
+    personSchemaPassthrough.parse({
+      name: "mike",
+      age: 20,
+    })
+  ).toThrow();
+});
+
+test("ZodObject - strict", () => {
+  const personSchemaStrict = z
+    .object({
+      name: z.string(),
+      age: z.number(),
+      bloodType: z.enum(["A", "B", "AB", "O"]),
+    })
+    .strict();
+  expect(() =>
+    personSchemaStrict.strict().parse({
       name: "mike",
       age: 20,
       bloodType: "A",
@@ -252,10 +280,19 @@ test("ZodObject", () => {
       someExtraKey: "this is extra key",
     })
   ).toThrow();
+});
 
-  // strict then strip
+test("ZodObject - strict then strip", () => {
+  const personSchemaStrictThenStrip = z
+    .object({
+      name: z.string(),
+      age: z.number(),
+      bloodType: z.enum(["A", "B", "AB", "O"]),
+    })
+    .strict()
+    .strip();
   expect(
-    personSchema.strict().strip().parse({
+    personSchemaStrictThenStrip.strict().strip().parse({
       name: "mike",
       age: 20,
       bloodType: "A",
@@ -267,32 +304,233 @@ test("ZodObject", () => {
     age: 20,
     bloodType: "A",
   });
+});
+
+test("ZodObject - non object input", () => {
+  const person = z.object({
+    name: z.string(),
+    age: z.number(),
+    bloodType: z.enum(["A", "B", "AB", "O"]),
+  });
 
   // null
-  expect(() => personSchema.parse(null)).toThrow();
+  expect(() => person.parse(null)).toThrow();
 
   // array
-  expect(() => personSchema.parse([])).toThrow();
+  expect(() => person.parse([])).toThrow();
 
   // promise
-  expect(() => personSchema.parse(new Promise(() => {}))).toThrow();
+  expect(() => person.parse(new Promise(() => {}))).toThrow();
 
   // regex
-  expect(() => personSchema.parse(/123/)).toThrow();
+  expect(() => person.parse(/123/)).toThrow();
 
   // date
-  expect(() => personSchema.parse(new Date())).toThrow();
+  expect(() => person.parse(new Date())).toThrow();
 
   // set
-  expect(() => personSchema.parse(new Set())).toThrow();
+  expect(() => person.parse(new Set())).toThrow();
 
   // map
-  expect(() => personSchema.parse(new Map())).toThrow();
+  expect(() => person.parse(new Map())).toThrow();
 
   // type
-  expectTypeOf(personSchema["_output"]).toEqualTypeOf<{
+  expectTypeOf(person["_output"]).toEqualTypeOf<{
     name: string;
     age: number;
     bloodType: "A" | "B" | "O" | "AB";
   }>();
+});
+
+test("ZodObject - shape", () => {
+  const dogSchema = z.object({
+    name: z.string(),
+    age: z.number(),
+  });
+  expectTypeOf(dogSchema.shape.name["_output"]).toEqualTypeOf<string>();
+  expectTypeOf(dogSchema.shape.age["_output"]).toEqualTypeOf<number>();
+});
+
+test("ZodObject - keyof", () => {
+  const dogSchema = z.object({
+    name: z.string(),
+    age: z.number(),
+  });
+  const keySchema = dogSchema.keyof();
+  expect(keySchema.parse("name")).toBe("name");
+  expect(keySchema.parse("age")).toBe("age");
+  expect(() => keySchema.parse("weight")).toThrow();
+});
+
+test("ZodObject - extend", () => {
+  const dogWithBreed = z
+    .object({
+      name: z.string(),
+      age: z.number(),
+    })
+    .extend({
+      breed: z.string(),
+    });
+  expectTypeOf(dogWithBreed["_output"]).toEqualTypeOf<{
+    name: string;
+    age: number;
+    breed: string;
+  }>();
+
+  expect(() =>
+    dogWithBreed.parse({
+      name: "Bailey",
+      age: 2,
+    })
+  ).toThrow();
+  expect(
+    dogWithBreed.parse({
+      name: "Bailey",
+      age: 2,
+      breed: "Bulldog",
+    })
+  ).toEqual({
+    name: "Bailey",
+    age: 2,
+    breed: "Bulldog",
+  });
+
+  const overwrittenDogWithBreed = dogWithBreed.extend({
+    breed: z.enum(["Poodle", "Boxer"]),
+  });
+  expect(() =>
+    overwrittenDogWithBreed.parse({
+      name: "Bailey",
+      age: 2,
+      breed: "Bulldog",
+    })
+  ).toThrow();
+  expect(
+    overwrittenDogWithBreed.parse({
+      name: "Bailey",
+      age: 2,
+      breed: "Poodle",
+    })
+  ).toEqual({
+    name: "Bailey",
+    age: 2,
+    breed: "Poodle",
+  });
+  expectTypeOf(overwrittenDogWithBreed["_output"]).toEqualTypeOf<{
+    name: string;
+    age: number;
+    breed: "Poodle" | "Boxer";
+  }>();
+});
+
+test("ZodObject - merge", () => {
+  const teacherWithId = z
+    .object({ subject: z.string() })
+    .merge(z.object({ id: z.string() }));
+  expectTypeOf(teacherWithId["_output"]).toEqualTypeOf<{
+    subject: string;
+    id: string;
+  }>();
+
+  expect(
+    teacherWithId.parse({
+      subject: "math",
+      id: "a",
+    })
+  ).toEqual({
+    subject: "math",
+    id: "a",
+  });
+});
+
+test("ZodObject - pick", () => {
+  const recipeName = z
+    .object({
+      id: z.string(),
+      name: z.string(),
+    })
+    .pick({ name: true });
+  expectTypeOf(recipeName["_output"]).toEqualTypeOf<{
+    name: string;
+  }>();
+
+  expect(
+    recipeName.parse({
+      name: "chicken",
+    })
+  ).toEqual({
+    name: "chicken",
+  });
+});
+
+test("ZodObject - omit", () => {
+  const noIdRecipe = z
+    .object({
+      id: z.string(),
+      name: z.string(),
+    })
+    .omit({ id: true });
+  expectTypeOf(noIdRecipe["_output"]).toEqualTypeOf<{
+    name: string;
+  }>();
+
+  expect(
+    noIdRecipe.parse({
+      name: "a",
+    })
+  ).toEqual({
+    name: "a",
+  });
+});
+
+test("ZodObject - partial", () => {
+  const partialUser = z
+    .object({
+      email: z.string(),
+      username: z.string(),
+    })
+    .partial();
+  expectTypeOf(partialUser["_output"]).toEqualTypeOf<{
+    email: string | undefined;
+    username: string | undefined;
+  }>();
+
+  expect(
+    partialUser.parse({
+      email: undefined,
+      username: undefined,
+    })
+  ).toEqual({
+    email: undefined,
+    username: undefined,
+  });
+});
+
+test("ZodObject - required", () => {
+  const requiredUser = z
+    .object({
+      email: z.string().optional(),
+      username: z.string().optional(),
+    })
+    .required();
+  expectTypeOf(requiredUser["_output"]).toEqualTypeOf<{
+    email: string;
+    username: string;
+  }>();
+
+  expect(() =>
+    requiredUser.parse({
+      email: undefined,
+      username: undefined,
+    })
+  ).toThrow();
+  expect(
+    requiredUser.parse({
+      email: "test@gmail.com",
+      username: "test",
+    })
+  ).toEqual({
+    email: "test@gmail.com",
+    username: "test",
+  });
 });

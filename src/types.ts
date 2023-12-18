@@ -1,5 +1,6 @@
-import { assertNever } from "./asserts";
-import { floatSafeRemainder } from "./math";
+import { assertNever } from "./lib/asserts";
+import { UnionToTupleString, Writable } from "./lib/types";
+import { floatSafeRemainder } from "./lib/math";
 
 type ZodTypeAny = ZodType<any, any>;
 abstract class ZodType<Output, Def> {
@@ -627,8 +628,18 @@ class ZodObject<T extends Record<string, ZodTypeAny>> extends ZodType<
         };
       }
 
-      const extraKeys = [];
       const shapeKeys = Object.keys(this._def.shape);
+      for (let i = 0; i < shapeKeys.length; ++i) {
+        const shapeKey = shapeKeys[i];
+        if (shapeKey && !(shapeKey in data)) {
+          return {
+            isValid: false,
+            reason: `${shapeKey} is in ${this._def.shape}, but not in ${data}`,
+          };
+        }
+      }
+
+      const extraKeys = [];
       for (const key in data) {
         if (!shapeKeys.includes(key)) {
           extraKeys.push(key);
@@ -696,6 +707,114 @@ class ZodObject<T extends Record<string, ZodTypeAny>> extends ZodType<
     });
   }
 
+  get shape() {
+    return this._def.shape;
+  }
+
+  keyof(): ZodEnum<UnionToTupleString<keyof T>> {
+    return ZodEnum.create(
+      Object.keys(this._def.shape) as [string, ...string[]]
+    ) as any;
+  }
+
+  extend<T extends Record<string, ZodTypeAny>>(shape: T) {
+    return new ZodObject({
+      ...this._def,
+      shape: {
+        ...this.shape,
+        ...shape,
+      },
+    });
+  }
+
+  merge<T extends Record<string, ZodTypeAny>>(
+    zodObject: ZodType<{ [K in keyof T]: T[K]["_output"] }, ZodObjectDef<T>>
+  ) {
+    return this.extend(zodObject._def.shape);
+  }
+
+  pick<Mask extends Partial<Record<keyof T, true>>>(
+    mask: Mask
+  ): ZodObject<Pick<T, Extract<keyof T, keyof Mask>>> {
+    const newShape = {} as T;
+    for (const key in this.shape) {
+      if (mask[key]) {
+        newShape[key] = this.shape[key];
+      }
+    }
+
+    return new ZodObject({
+      ...this._def,
+      shape: newShape,
+    });
+  }
+
+  omit<Mask extends Partial<Record<keyof T, true>>>(
+    mask: Mask
+  ): ZodObject<Omit<T, keyof Mask>> {
+    const newShape = {} as T;
+
+    for (const key in this.shape) {
+      if (!mask[key]) {
+        newShape[key] = this.shape[key];
+      }
+    }
+
+    return new ZodObject({
+      ...this._def,
+      shape: newShape,
+    });
+  }
+
+  partial<Mask extends Partial<Record<keyof T, true>>>(
+    mask?: Mask
+  ): ZodObject<{
+    [K in keyof T]: K extends keyof Mask ? ZodOptional<T[K]> : T[K];
+  }> {
+    const newShape = {} as any;
+    for (const key in this.shape) {
+      if (mask) {
+        if (mask[key]) {
+          newShape[key] = this.shape[key]?.optional();
+        } else {
+          newShape[key] = this.shape[key];
+        }
+      } else {
+        newShape[key] = this.shape[key]?.optional();
+      }
+    }
+
+    return new ZodObject({
+      ...this._def,
+      shape: newShape,
+    });
+  }
+
+  required<Mask extends Partial<Record<keyof T, true>>>(
+    mask?: Mask
+  ): ZodObject<{
+    [K in keyof T]: K extends keyof Mask ? UnwrapOptional<T[K]> : T[K];
+  }> {
+    const newShape: any = {};
+
+    for (const key in this.shape) {
+      let zodTypeAny = this.shape[key];
+      if (mask && !mask[key]) {
+        newShape[key] = zodTypeAny;
+      } else {
+        while (zodTypeAny instanceof ZodOptional) {
+          zodTypeAny = zodTypeAny._def.innerType;
+        }
+        newShape[key] = zodTypeAny;
+      }
+    }
+
+    return new ZodObject({
+      ...this._def,
+      shape: newShape,
+    });
+  }
+
   static create<T extends Record<string, ZodTypeAny>>(shape: T) {
     return new ZodObject({
       shape,
@@ -703,10 +822,6 @@ class ZodObject<T extends Record<string, ZodTypeAny>> extends ZodType<
     });
   }
 }
-
-type Writable<T> = {
-  -readonly [K in keyof T]: T[K];
-};
 
 export const z = {
   string: ZodString.create,
@@ -716,3 +831,7 @@ export const z = {
   nullable: ZodNullable.create,
   object: ZodObject.create,
 };
+
+type UnwrapOptional<T extends ZodTypeAny> = T extends ZodOptional<infer U>
+  ? UnwrapOptional<U>
+  : T;
