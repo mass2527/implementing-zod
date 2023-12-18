@@ -54,6 +54,10 @@ abstract class ZodType<Output, Def> {
   nullable() {
     return ZodNullable.create(this);
   }
+
+  array() {
+    return ZodArray.create(this);
+  }
 }
 
 type ZodStringCheck =
@@ -823,6 +827,150 @@ class ZodObject<T extends Record<string, ZodTypeAny>> extends ZodType<
   }
 }
 
+type ZodArrayCheck =
+  | {
+      kind: "min";
+      value: number;
+      message?: string;
+    }
+  | {
+      kind: "max";
+      value: number;
+      message?: string;
+    }
+  | {
+      kind: "length";
+      value: number;
+      message?: string;
+    };
+
+type ZodArrayDef<T> = {
+  element: T;
+  nonempty: boolean;
+  checks: ZodArrayCheck[];
+};
+
+class ZodArray<T extends ZodTypeAny> extends ZodType<
+  T["_output"][],
+  ZodArrayDef<T>
+> {
+  _parse(
+    data: unknown
+  ):
+    | { isValid: false; reason?: string | undefined }
+    | { isValid: true; data: T[] } {
+    if (!Array.isArray(data)) {
+      return {
+        isValid: false,
+        reason: `${data} is not an array`,
+      };
+    }
+
+    if (this._def.nonempty && data.length === 0) {
+      return {
+        isValid: false,
+        reason: `${data} should be non empty`,
+      };
+    }
+
+    for (const check of this._def.checks) {
+      if (check.kind === "min") {
+        if (data.length < check.value) {
+          return {
+            isValid: false,
+            reason: `${data}'s length should be greater or equal to ${check.value}`,
+          };
+        }
+      } else if (check.kind === "max") {
+        if (data.length > check.value) {
+          return {
+            isValid: false,
+            reason: `${data}'s length should be less or equal to ${check.value}`,
+          };
+        }
+      } else if (check.kind === "length") {
+        if (data.length !== check.value) {
+          return {
+            isValid: false,
+            reason: `${data}'s length should be ${check.value}`,
+          };
+        }
+      } else {
+        assertNever(check);
+      }
+    }
+
+    for (let i = 0; i < data.length; ++i) {
+      const item = data[i];
+
+      const result = this._def.element._parse(item);
+      if (!result.isValid) {
+        return {
+          isValid: false,
+          reason: result.reason,
+        };
+      }
+    }
+
+    return {
+      isValid: true,
+      data,
+    };
+  }
+
+  get element() {
+    return this._def.element;
+  }
+
+  nonempty() {
+    return new ZodArray({
+      ...this._def,
+      nonempty: true,
+    });
+  }
+
+  _addCheck(check: ZodArrayCheck) {
+    this._def.checks.push(check);
+
+    return new ZodArray({
+      ...this._def,
+      checks: this._def.checks,
+    });
+  }
+
+  min(minLength: number, message?: string) {
+    return this._addCheck({
+      kind: "min",
+      value: minLength,
+      message,
+    });
+  }
+
+  max(maxLength: number, message?: string) {
+    return this._addCheck({
+      kind: "max",
+      value: maxLength,
+      message,
+    });
+  }
+
+  length(length: number, message?: string) {
+    return this._addCheck({
+      kind: "length",
+      value: length,
+      message,
+    });
+  }
+
+  static create<T extends ZodTypeAny>(element: T) {
+    return new ZodArray({
+      element,
+      nonempty: false,
+      checks: [],
+    });
+  }
+}
+
 export const z = {
   string: ZodString.create,
   number: ZodNumber.create,
@@ -830,6 +978,7 @@ export const z = {
   optional: ZodOptional.create,
   nullable: ZodNullable.create,
   object: ZodObject.create,
+  array: ZodArray.create,
 };
 
 type UnwrapOptional<T extends ZodTypeAny> = T extends ZodOptional<infer U>

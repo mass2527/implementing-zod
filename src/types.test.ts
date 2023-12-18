@@ -534,3 +534,72 @@ test("ZodObject - required", () => {
     username: "test",
   });
 });
+
+test("ZodArray", () => {
+  const stringArray1 = z.array(z.string());
+  expectTypeOf(stringArray1["_output"]).toEqualTypeOf<string[]>();
+  expect(stringArray1.parse(["a", "b", "c"])).toEqual(["a", "b", "c"]);
+  expect(() => stringArray1.parse(["a", "b", 1])).toThrow();
+
+  const stringArray2 = z.string().array();
+  expect(stringArray2.parse(["a", "b", "c"])).toEqual(["a", "b", "c"]);
+  expect(() => stringArray2.parse(["a", "b", 1])).toThrow();
+
+  const optionalStringArray = z.string().optional().array();
+  expectTypeOf(optionalStringArray["_output"]).toEqualTypeOf<
+    (string | undefined)[]
+  >();
+  expect(optionalStringArray.parse(["a", undefined, "c"])).toEqual([
+    "a",
+    undefined,
+    "c",
+  ]);
+  expect(() => optionalStringArray.parse(undefined)).toThrow();
+
+  const stringArrayOrUndefined = z.string().array().optional();
+  expectTypeOf(stringArrayOrUndefined["_output"]).toEqualTypeOf<
+    string[] | undefined
+  >();
+  expect(() => stringArrayOrUndefined.parse(["a", undefined, "c"])).toThrow();
+  expect(stringArrayOrUndefined.parse(undefined)).toBeUndefined();
+});
+
+test("ZodArray - utilities", () => {
+  // nonempty
+  const nonEmptyStringArray = z.string().array().nonempty();
+  expect(() => nonEmptyStringArray.parse([])).toThrow();
+
+  // min
+  const minLengthFive = z.string().array().min(5);
+  expect(() => minLengthFive.parse(["a", "b", "c", "d"])).toThrow();
+  expect(minLengthFive.parse(["a", "b", "c", "d", "e"])).toEqual([
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+  ]);
+
+  // max
+  const maxLengthFive = z.string().array().max(5);
+  expect(() => maxLengthFive.parse(["a", "b", "c", "d", "e", "f"])).toThrow();
+  expect(maxLengthFive.parse(["a", "b", "c", "d", "e"])).toEqual([
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+  ]);
+
+  // length
+  const lengthFive = z.string().array().length(5);
+  expect(() => lengthFive.parse(["a", "b", "c", "d", "e", "f"])).toThrow();
+  expect(() => lengthFive.parse(["a", "b", "c", "d"])).toThrow();
+  expect(lengthFive.parse(["a", "b", "c", "d", "e"])).toEqual([
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+  ]);
+});
